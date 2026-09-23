@@ -1,0 +1,393 @@
+{
+  "schema_version": "1.0",
+  "tool": {
+    "name": "sparkmedic",
+    "version": "0.1.0",
+    "docs_reviewed": "2026-09"
+  },
+  "generated_at_ms": 1790143652369,
+  "application": {
+    "app_id": "app-20260923035401-0000",
+    "name": "dim_rika_periodic_1 (foreachBatch MERGE)",
+    "spark_version": "4.0.0 (Databricks Runtime 17.3)",
+    "completed": true,
+    "start_time_ms": 0,
+    "end_time_ms": 3600000
+  },
+  "overview": {
+    "app_id": "app-20260923035401-0000",
+    "app_name": "dim_rika_periodic_1 (foreachBatch MERGE)",
+    "spark_version": "4.0.0 (Databricks Runtime 17.3)",
+    "source": {
+      "kind": "databricks-remote",
+      "target": "databricks://0922-000000-example",
+      "detail": ""
+    },
+    "completed": true,
+    "duration_ms": 3600000.0,
+    "total_task_time_ms": 35142000.0,
+    "executors": 2,
+    "workers": 2,
+    "total_cores": 64,
+    "cluster_utilization": 0.15252604166666667,
+    "is_databricks": true,
+    "photon": false,
+    "local_mode": false,
+    "jobs": 2,
+    "stages": 2,
+    "sql_executions": 2,
+    "failed_tasks": 0,
+    "cluster": {
+      "node_type": "Standard_D32ds_v5",
+      "spark_version": "17.3.x-scala2.13"
+    },
+    "top_stages": [
+      {
+        "stage_id": 26,
+        "attempt_id": 0,
+        "name": "start at NativeMethodAccessorImpl.java:0",
+        "status": "COMPLETE",
+        "share": 0.9527061635649651,
+        "task_time_ms": 33480000.000000004,
+        "wall_time_ms": 660000.0,
+        "num_tasks": 126,
+        "input_bytes": 0.0,
+        "shuffle_read_bytes": 0.0,
+        "shuffle_write_bytes": 16213501542.4,
+        "spill_disk_bytes": 472907776,
+        "gc_ratio": 0.01,
+        "cpu_ratio": 0.97,
+        "max_over_median": 1.010752688172043,
+        "sql_execution_id": 16
+      },
+      {
+        "stage_id": 23,
+        "attempt_id": 0,
+        "name": "collect at merge_dim_rika_periodic_1:59",
+        "status": "COMPLETE",
+        "share": 0.047293836435035,
+        "task_time_ms": 1662000.0,
+        "wall_time_ms": 30000.0,
+        "num_tasks": 157,
+        "input_bytes": 0.0,
+        "shuffle_read_bytes": 0.0,
+        "shuffle_write_bytes": 0.0,
+        "spill_disk_bytes": 0.0,
+        "gc_ratio": 0.0,
+        "cpu_ratio": 0.9,
+        "max_over_median": null,
+        "sql_execution_id": 15
+      }
+    ],
+    "top_sql": [
+      {
+        "execution_id": 16,
+        "description": "MERGE INTO dim_rika_periodic_1",
+        "duration_ms": 1200000,
+        "status": "COMPLETED",
+        "share": 0.9527061635649651
+      },
+      {
+        "execution_id": 15,
+        "description": "collect_set(dlog_date) for partition list",
+        "duration_ms": 33000,
+        "status": "COMPLETED",
+        "share": 0.047293836435035
+      }
+    ]
+  },
+  "analysis": {
+    "focus_stage_ids": null,
+    "focus_sql_ids": null,
+    "min_severity": "low",
+    "rules_run": [
+      "SD101",
+      "SD102",
+      "SD103",
+      "SD104",
+      "SD105",
+      "SD106",
+      "SD107",
+      "SD108",
+      "SD201",
+      "SD202",
+      "SD203",
+      "SD204",
+      "SD205",
+      "SD206",
+      "SD207",
+      "SD301",
+      "SD302",
+      "SD303",
+      "SD304",
+      "SD305",
+      "SD306",
+      "SD401",
+      "SD402",
+      "SD403",
+      "SD404",
+      "SD405"
+    ]
+  },
+  "findings": [
+    {
+      "rule_id": "SD104",
+      "title": "Compute-bound Stage 26 (start)",
+      "severity": "critical",
+      "category": "cpu",
+      "summary": "The stage moves little data but runs a long time: the cost is in per-row computation.",
+      "evidence": [
+        "Stage 26 (start) used 9.3 h of task time (95% of the whole app), wall time 11.0 min, 126 tasks.",
+        "I/O rate: 0.37 MB/s per core (Databricks treats ~3 MB/s per core as I/O bound), so this stage is not I/O bound.",
+        "CPU time is 97% of task time; GC is 1%.",
+        "Throughput: about 697 rows per second per task.",
+        "The plan for this stage calls variant_get() 776 times on column 'periodic_json' (776 JSON/variant extractions in total).",
+        "Rows are very wide: up to 790 columns per row in this stage.",
+        "The stage sorts rows for a window function (e.g. ROW_NUMBER dedup)."
+      ],
+      "root_cause": "Each row is searched 776 separate times: one variant_get() call per field. With wide JSON/variant values this repeated lookup dominates the CPU time. Very wide rows make every sort, shuffle and window more expensive.",
+      "recommendations": [
+        {
+          "kind": "code",
+          "title": "Extract all fields in one pass: cast the VARIANT to a STRUCT once",
+          "detail": "One cast walks the object once instead of one lookup per field. Build the struct schema with the same field names and target types you extract today, and check results match on a sample (exceptAll) before switching.",
+          "snippet": "from pyspark.sql.types import StructType, StructField, StringType\nfields = [...]  # the field names you extract today\nschema = StructType([StructField(f, StringType()) for f in fields])\ndf = (df.withColumn('_parsed', F.col('periodic_json').cast(schema))\n        .select('*', '_parsed.*').drop('_parsed'))",
+          "language": "python"
+        },
+        {
+          "kind": "practice",
+          "title": "Replace UDFs and repeated per-row work with built-in functions",
+          "detail": "Built-in functions run inside Spark's code generation (and Photon on Databricks).",
+          "snippet": "",
+          "language": ""
+        },
+        {
+          "kind": "cluster",
+          "title": "Try Photon for this job",
+          "detail": "Photon speeds up expression evaluation, JSON/variant handling, scans, joins and aggregations. It does not run Python UDFs. Compare runtime and DBU cost on a test run.",
+          "snippet": "",
+          "language": ""
+        },
+        {
+          "kind": "cluster",
+          "title": "Scale out only after fixing the code",
+          "detail": "This work is parallel: more cores cut wall time roughly linearly (now 126 tasks on 64 cores = 2 wave(s)).",
+          "snippet": "",
+          "language": ""
+        }
+      ],
+      "references": [
+        {
+          "title": "Slow Spark stage with little I/O",
+          "url": "https://docs.databricks.com/aws/en/optimizations/spark-ui-guide/slow-spark-stage-low-io"
+        },
+        {
+          "title": "What are user-defined functions (UDFs)?",
+          "url": "https://docs.databricks.com/aws/en/udf/"
+        },
+        {
+          "title": "Query variant data",
+          "url": "https://docs.databricks.com/aws/en/semi-structured/variant"
+        },
+        {
+          "title": "What is Photon?",
+          "url": "https://docs.databricks.com/aws/en/compute/photon"
+        }
+      ],
+      "stage_ids": [
+        26
+      ],
+      "sql_ids": [
+        16
+      ],
+      "impact_share": 0.9527061635649651,
+      "confidence": "high",
+      "score": 3.6081
+    },
+    {
+      "rule_id": "SD102",
+      "title": "Spill to disk in Stage 26 (start)",
+      "severity": "low",
+      "category": "memory",
+      "summary": "Tasks ran out of execution memory and wrote intermediate data to disk, which is slow.",
+      "evidence": [
+        "Stage 26 (start) used 9.3 h of task time (95% of the whole app), wall time 11.0 min, 126 tasks.",
+        "Spill: 4.4 GiB in memory, 451.0 MiB on disk.",
+        "Disk spill is only 3% of the data this stage moves, so it is a minor cost here."
+      ],
+      "root_cause": "Partitions are too big for the memory each task gets (too few partitions, skew, or very wide rows).",
+      "recommendations": [
+        {
+          "kind": "code",
+          "title": "Make rows narrower before wide operations",
+          "detail": "Select only the columns you need before joins, sorts, windows and aggregations. Wide rows (many or big columns such as JSON strings) fill execution memory fast.",
+          "snippet": "",
+          "language": ""
+        },
+        {
+          "kind": "cluster",
+          "title": "Give each core more memory",
+          "detail": "Use memory-optimized workers (e.g. Azure E-series, AWS r-family) or fewer cores per executor so each task gets a bigger share of execution memory.",
+          "snippet": "",
+          "language": ""
+        }
+      ],
+      "references": [
+        {
+          "title": "Skew and spill",
+          "url": "https://docs.databricks.com/aws/en/optimizations/spark-ui-guide/long-spark-stage-page"
+        },
+        {
+          "title": "Comprehensive guide to optimize Databricks, Spark and Delta Lake workloads",
+          "url": "https://www.databricks.com/discover/pages/optimize-data-workloads-guide"
+        },
+        {
+          "title": "Classic compute configuration best practices",
+          "url": "https://docs.databricks.com/aws/en/compute/cluster-config-best-practices"
+        },
+        {
+          "title": "Tuning Spark (memory, GC, parallelism)",
+          "url": "https://spark.apache.org/docs/latest/tuning.html"
+        }
+      ],
+      "stage_ids": [
+        26
+      ],
+      "sql_ids": [
+        16
+      ],
+      "impact_share": 0.9527061635649651,
+      "confidence": "high",
+      "score": 0.4811
+    },
+    {
+      "rule_id": "SD301",
+      "title": "Cluster cores mostly idle",
+      "severity": "low",
+      "category": "cluster",
+      "summary": "Tasks used only 15% of the available core-time (64 cores over 1.0 h).",
+      "evidence": [
+        "Total task time 9.8 h vs 64 cores x 1.0 h."
+      ],
+      "root_cause": "The cluster is larger than the work needs, stages have too few tasks, or the driver is the bottleneck.",
+      "recommendations": [
+        {
+          "kind": "cluster",
+          "title": "Right-size the cluster or enable autoscaling for batch jobs",
+          "detail": "",
+          "snippet": "",
+          "language": ""
+        },
+        {
+          "kind": "config",
+          "title": "Make sure big stages have at least 2-3 tasks per core",
+          "detail": "",
+          "snippet": "",
+          "language": ""
+        }
+      ],
+      "references": [
+        {
+          "title": "Classic compute configuration best practices",
+          "url": "https://docs.databricks.com/aws/en/compute/cluster-config-best-practices"
+        },
+        {
+          "title": "Tuning Spark (memory, GC, parallelism)",
+          "url": "https://spark.apache.org/docs/latest/tuning.html"
+        }
+      ],
+      "stage_ids": [],
+      "sql_ids": [],
+      "impact_share": null,
+      "confidence": "low",
+      "score": 0.108
+    },
+    {
+      "rule_id": "SD403",
+      "title": "Photon is not enabled",
+      "severity": "low",
+      "category": "config",
+      "summary": "100% of task time is DataFrame/SQL work that Photon can usually run faster.",
+      "evidence": [
+        "No Photon operators in the query plans.",
+        "Total task time 9.8 h."
+      ],
+      "root_cause": "The cluster runs the standard Spark engine.",
+      "recommendations": [
+        {
+          "kind": "cluster",
+          "title": "Test the job with Photon enabled (compute setting 'Use Photon Acceleration')",
+          "detail": "Photon has a higher DBU rate, so compare total cost, not only runtime.",
+          "snippet": "",
+          "language": ""
+        }
+      ],
+      "references": [
+        {
+          "title": "What is Photon?",
+          "url": "https://docs.databricks.com/aws/en/compute/photon"
+        },
+        {
+          "title": "Best practices for performance efficiency",
+          "url": "https://docs.databricks.com/aws/en/lakehouse-architecture/performance-efficiency/best-practices"
+        }
+      ],
+      "stage_ids": [],
+      "sql_ids": [],
+      "impact_share": null,
+      "confidence": "low",
+      "score": 0.108
+    },
+    {
+      "rule_id": "SD207",
+      "title": "The same input is read 2 times (ExistingRDD (pre-computed DataFrame, e.g. a foreachBatch micro-batch))",
+      "severity": "low",
+      "category": "io",
+      "summary": "Work is repeated because a source is re-scanned by several actions.",
+      "evidence": [
+        "ExistingRDD (pre-computed DataFrame, e.g. a foreachBatch micro-batch) is scanned by 2 different queries: 15, 16."
+      ],
+      "root_cause": "The same pre-computed DataFrame (typically the micro-batch inside foreachBatch) is re-computed for every action on it. Spark cannot push column pruning into it, so each action re-reads the full source, including large columns you do not need for that action.",
+      "recommendations": [
+        {
+          "kind": "code",
+          "title": "Persist the micro-batch once, run every action on the persisted copy, then unpersist",
+          "detail": "Persist after cheap narrowing (filters/column selection) but before expensive work you reuse.",
+          "snippet": "def process(batch_df, batch_id):\n    df = batch_df.filter(...).persist()\n    try:\n        keys = df.select('dlog_date').distinct().collect()\n        # ... MERGE using df ...\n    finally:\n        df.unpersist()",
+          "language": "python"
+        },
+        {
+          "kind": "code",
+          "title": "Compute small side values (key lists, counts) from narrow columns only, and avoid extra actions where possible",
+          "detail": "",
+          "snippet": "",
+          "language": ""
+        }
+      ],
+      "references": [
+        {
+          "title": "Use foreachBatch to write to arbitrary data sinks",
+          "url": "https://docs.databricks.com/aws/en/structured-streaming/foreach"
+        },
+        {
+          "title": "Optimize performance with caching",
+          "url": "https://docs.databricks.com/aws/en/optimizations/disk-cache"
+        },
+        {
+          "title": "Tuning Spark (memory, GC, parallelism)",
+          "url": "https://spark.apache.org/docs/latest/tuning.html"
+        }
+      ],
+      "stage_ids": [],
+      "sql_ids": [
+        15,
+        16
+      ],
+      "impact_share": 0.04729383643503493,
+      "confidence": "medium",
+      "score": 0.1011
+    }
+  ],
+  "notes": [],
+  "errors": []
+}

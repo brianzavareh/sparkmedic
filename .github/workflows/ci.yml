@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all,dev]"
+      - name: Lint
+        run: ruff check src tests examples
+      - name: Test
+        run: pytest
+
+  core-only:
+    # The core must work with zero third-party dependencies (e.g. on a fresh Databricks cluster).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          pip install -e . pytest
+          pytest tests/test_units.py tests/test_rules.py
+          sparkmedic rules
+
+  mcp-v1:
+    # The MCP server supports both MCP Python SDK major versions.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          pip install -e ".[dev,zstd]" "mcp>=1.2,<2"
+          pytest tests/test_cli_mcp.py

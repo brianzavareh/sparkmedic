@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sparkmedic"
+description = "Automated root-cause analysis for slow Apache Spark and Databricks jobs, via the Spark REST API or event logs. CLI, Python API and MCP server."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Brian Zavareh" }]
+keywords = ["spark", "pyspark", "databricks", "performance", "spark-ui", "mcp", "tuning"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Debuggers",
+  "Topic :: System :: Monitoring",
+]
+dynamic = ["version"]
+# The core has no third-party dependencies so it installs cleanly on any Databricks cluster.
+dependencies = []
+
+[project.optional-dependencies]
+databricks = ["databricks-sdk>=0.40"]
+mcp = ["mcp>=1.2"]
+zstd = ["zstandard>=0.22"]
+all = ["databricks-sdk>=0.40", "mcp>=1.2", "zstandard>=0.22"]
+dev = ["pytest>=8", "ruff>=0.6", "zstandard>=0.22"]
+
+[project.scripts]
+sparkmedic = "sparkmedic.cli:main"
+sparkmedic-mcp = "sparkmedic.mcp_server:main"
+
+[project.urls]
+Homepage = "https://github.com/brianzavareh/sparkmedic"
+Issues = "https://github.com/brianzavareh/sparkmedic/issues"
+Documentation = "https://github.com/brianzavareh/sparkmedic#readme"
+
+[tool.setuptools.dynamic]
+version = { attr = "sparkmedic.version.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 130
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+ignore = ["E501", "B008"]

@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+# local runs
+spark-events/
+demo-data/
+reports/
+spark-snapshot.json
+snapshot-*.json
+sparkmedic-*.md
+sparkmedic-*.json
+spark-warehouse/
+metastore_db/
+derby.log
